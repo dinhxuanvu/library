@@ -18,6 +18,9 @@ SVARS = {
     "index"         : {}
     }
 
+# Flag for online option
+online = False
+
 def message(action, sub_action, text):
     """ Outputs a formatted message to stdout
 
@@ -169,15 +172,19 @@ def process_template(source, folder, location_list, template):
         if valid:
             matches = re.search(r'(^' + location_list['regex'] + ')', template["metadata"]["name"])
     if matches or 'regex' not in location_list:
-        index_data = {
-            'name': template['metadata']['name'],
-            'docs': location_list['docs'] if 'docs' in location_list else '',
-            'source_url': location_list['location'],
-            'description': template['metadata']['annotations']['description'] if 'description' in template['metadata']['annotations'] else '',
-            'path': source + '/' + folder + '/templates/' + template['metadata']['name'] + '.json'
-            }
-        append_to_index(source, folder, 'templates', index_data)
-        write_data_to_file(template, SVARS['base_dir'] + '/' + folder + '/templates/' + template['metadata']['name'] + '.json')
+        # Skip the index for online option
+        if not online:
+            index_data = {
+                'name': template['metadata']['name'],
+                'docs': location_list['docs'] if 'docs' in location_list else '',
+                'source_url': location_list['location'],
+                'description': template['metadata']['annotations']['description'] if 'description' in template['metadata']['annotations'] else '',
+                'path': source + '/' + folder + '/templates/' + template['metadata']['name'] + '.json'
+                }
+            append_to_index(source, folder, 'templates', index_data)
+            write_data_to_file(template, SVARS['base_dir'] + '/' + folder + '/templates/' + template['metadata']['name'] + '.json')
+        else:
+            write_data_to_file(template, SVARS['base_dir'] + '/' + folder + "/templates/examples/" + template['metadata']['name'] + '.json')
 
 def process_imagestream(source, folder, location_list, imagestream):
     """ Processes an image-stream and writes it's data to a file in JSON format
@@ -202,13 +209,15 @@ def process_imagestream(source, folder, location_list, imagestream):
         if 'regex' in location_list:
             matches = re.search(r'(^' + location_list['regex'] + ')', stream["metadata"]["name"])
         if matches or 'regex' not in location_list:
-            index_data = {
-                'name': stream['metadata']['name'],
-                'docs': location_list['docs'] if 'docs' in location_list else '',
-                'source_url': location_list['location'],
-                'path': source + '/' + folder + '/imagestreams/' +  stream["metadata"]["name"] + ("-" + location_list["suffix"] if 'suffix' in location_list else '') + ".json"
-                }
-            append_to_index(source, folder, 'imagestreams', index_data)
+            # Skip the index for online option
+            if not online:
+                index_data = {
+                    'name': stream['metadata']['name'],
+                    'docs': location_list['docs'] if 'docs' in location_list else '',
+                    'source_url': location_list['location'],
+                    'path': source + '/' + folder + '/imagestreams/' +  stream["metadata"]["name"] + ("-" + location_list["suffix"] if 'suffix' in location_list else '') + ".json"
+                    }
+                append_to_index(source, folder, 'imagestreams', index_data)
             write_data_to_file(stream, SVARS['base_dir'] + "/" + folder + "/imagestreams/" + stream["metadata"]["name"] + ("-" + location_list["suffix"] if 'suffix' in location_list else '') + ".json")
 
 def create_indexes():
@@ -236,15 +245,38 @@ def main():
     """
     # parse command line options
     parser = argparse.ArgumentParser(description='Build OpenShift template and image-stream library')
+    parser.add_argument("--online", action="store_true", default=False, help="Import Online-specific templates and imagestreams")
     args = parser.parse_args()
+
+    global online
+    # Flag online option if selected
+    online = args.online
 
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
 
+    # Remove the templates + imagestreams in free and paid directory
+    if online:
+        if os.path.exists("free/templates/examples"):
+            message("Deleting", "folder", "free/templates/examples" )
+            shutil.rmtree("free/templates/examples")
+        if os.path.exists("free/imagestreams"):
+            message("Deleting", "folder", "free/imagestreams" )
+            shutil.rmtree("free/imagestreams")
+        if os.path.exists("paid/templates/examples"):
+            message("Deleting", "folder", "paid/templates/examples" )
+            shutil.rmtree("paid/templates/examples")
+        if os.path.exists("paid/imagestreams"):
+            message("Deleting", "folder", "paid/imagestreams" )
+            shutil.rmtree("paid/imagestreams")
+
     for source in SVARS['sources']:
         message('Opening', 'source file', source + '.yaml')
         with open(source + '.yaml', 'r') as source_file:
-            SVARS['base_dir'] = os.path.dirname(os.path.realpath(__file__)) + '/' + source
+            if online:
+                SVARS['base_dir'] = os.path.dirname(os.path.realpath(__file__))
+            else:
+                SVARS['base_dir'] = os.path.dirname(os.path.realpath(__file__)) + '/' + source
             message('Opening', 'file path', SVARS['base_dir'])
             raw_yaml = source_file.read()
             valid, doc = is_valid(raw_yaml)
@@ -262,23 +294,59 @@ def main():
                 message('Error', 'YAML', 'Variable replacement caused invalid YAML')
                 exit(1)
         if 'data' in doc:
-            if os.path.exists(source):
-                message("Deleting", "folder", source)
-                shutil.rmtree(source)
+            if not online:
+                if os.path.exists(source):
+                    message("Deleting", "folder", source)
+                    shutil.rmtree(source)
             for folder, contents in doc['data'].items():
-                if not os.path.exists(os.path.join(SVARS['base_dir'], folder)):
-                    os.makedirs(os.path.join(SVARS['base_dir'], folder))
+                if not online:
+                    if not os.path.exists(os.path.join(SVARS['base_dir'], folder)):
+                        os.makedirs(os.path.join(SVARS['base_dir'], folder))
                 for item_type in ['imagestreams', 'templates']:
                     if item_type in contents and len(contents[item_type]) > 0:
                         for item in contents[item_type]:
-                            if not os.path.exists(os.path.join(SVARS['base_dir'], folder, item_type)):
-                                os.makedirs(os.path.join(SVARS['base_dir'], folder, item_type))
-                            status, dict_data = fetch_url(item['location'])
-                            if item_type == 'templates':
-                                process_template(source, folder, item, dict_data)
-                            elif item_type == 'imagestreams':
-                                process_imagestream(source, folder, item, dict_data)
-    create_indexes()
+                            # Check if online flag is true or not:
+                            if online:
+                                # Check for the "openshift" tag in YAML file
+                                if "openshift" in item:
+                                    status, dict_data = fetch_url(item['location'])
+                                    tier = item.get("openshift").get("online")
+                                    # Check for "starter" and "professional" option
+                                    if "starter" in tier:
+                                        # Directory for starter (free tier): free/templates/examples and free/imagestreams
+                                        directory = "free/"
+                                        if item_type == 'templates':
+                                            if not os.path.exists(os.path.join(SVARS['base_dir'], directory, "templates/examples")):
+                                                os.makedirs(os.path.join(SVARS['base_dir'], directory, "templates/examples"))
+                                            process_template(source, directory, item, dict_data)
+                                        elif item_type == 'imagestreams':
+                                            if not os.path.exists(os.path.join(SVARS['base_dir'], directory, "imagestreams")):
+                                                os.makedirs(os.path.join(SVARS['base_dir'], directory, "imagestreams"))
+                                            process_imagestream(source, directory, item, dict_data)
+                                    if "professional" in tier:
+                                        # Directory for professional (paid tier): paid/templates/examples and paid/imagestreams
+                                        directory = "paid/"
+                                        if item_type == 'templates':
+                                            if not os.path.exists(os.path.join(SVARS['base_dir'], directory, "templates/examples")):
+                                                os.makedirs(os.path.join(SVARS['base_dir'], directory, "templates/examples"))
+                                            process_template(source, directory, item, dict_data)
+                                        elif item_type == 'imagestreams':
+                                            if not os.path.exists(os.path.join(SVARS['base_dir'], directory, "imagestreams")):
+                                                os.makedirs(os.path.join(SVARS['base_dir'], directory, "imagestreams"))
+                                            process_imagestream(source, directory, item, dict_data)
+                                else:
+                                    print "No 'openshift' tag found for " + item_type + " " + item["location"] +  ". Skipping..."
+                            # If online option is not selected
+                            else:
+                                if not os.path.exists(os.path.join(SVARS['base_dir'], folder, item_type)):
+                                    os.makedirs(os.path.join(SVARS['base_dir'], folder, item_type))
+                                status, dict_data = fetch_url(item['location'])
+                                if item_type == 'templates':
+                                    process_template(source, folder, item, dict_data)
+                                elif item_type == 'imagestreams':
+                                    process_imagestream(source, folder, item, dict_data)
+    if not online:
+        create_indexes()
 
 if __name__ == '__main__':
     main()

@@ -54,6 +54,7 @@ Community templates and image streams are **not** provided or supported by Red H
 
     optional arguments:
       -h, --help       show this help message and exit
+      --online    Import Online-specific templates and imagestreams
 
 ### Running the Script
 
@@ -83,11 +84,21 @@ That's it!  Your pull request will be reviewed by a member of the OpenShift Team
             regex: # (optional) matched against ['metadata']['name'] in the json file
             suffix: # (optional) suffix for the file that is created ex: ruby-<suffix>.json
             docs: # (optional) web address of the documentation for this image-stream
+            # These below options are for OpenShift Online usage only to import Online-specific templates/imagestreams
+            openshift: # (optional) flag for OpenShift
+              online: # (optional) flag for OpenShift Online
+                - starter # (optional) flag for OpenShift Online Starter
+                - professional # (optional) flag for OpenShift Online Professional
         templates: # (optional) list of templates to process into the above folder
           - location: # (required) github url to a template or folder of templates in json format
             regex: # (optional) matched against ['metadata']['name'] in the json file
             suffix: # (optional) suffix for the file that is created ex: ruby-<suffix>.json
             docs: # (optional) web address of the documentation for this template
+            # These below options are for OpenShift Online usage only to import Online-specific templates/imagestreams
+            openshift: # (optional) flag for OpenShift
+              online: # (optional) flag for OpenShift Online
+                - starter # (optional) flag for OpenShift Online Starter
+                - professional # (optional) flag for OpenShift Online Professional
 
 #### Variables
 
@@ -102,6 +113,8 @@ You must also specify a value for that variable name under the **variables** blo
 #### Organization
 
 The **folder_name** is a folder which represents a logical grouping for a set of templates or image-streams.  Listings in the **community.yaml** file will be created in a sub folder of the  **community** top level folder.
+
+For "online" option, templates are imported into <free/paid>/templates/examples/ directory while imagestreams are imported into <free/paid>/imagestreams/
 
 #### location
 
